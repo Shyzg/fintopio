@@ -296,12 +296,8 @@ class Fintopio:
     def main(self):
         while True:
             try:
-                with open('tokens.txt', 'r') as file:
-                    tokens = [line.strip() for line in file.readlines()]
-                
-                all_finish_times = []
-                all_next_at_times = []
-                
+                tokens = [line.strip() for line in open('tokens.txt') if line.strip()]
+                farming_times = []
                 for index, token in enumerate(tokens):
                     self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ {index + 1} ]{Style.RESET_ALL}")
                     self.activate_referrals(token=token)
@@ -317,7 +313,7 @@ class Fintopio:
                     elif state_farming['state'] == 'farming':
                         now = datetime.now().astimezone()
                         finish = datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone()
-                        all_finish_times.append(finish)
+                        farming_times.append(finish.timestamp())
                         if now >= finish:
                             self.claim_farming(token=token, farmed=state_farming['farmed'])
                         else:
@@ -338,29 +334,26 @@ class Fintopio:
                         self.complete_diamond(token=token, diamond_number=state_diamond['diamondNumber'], total_reward=state_diamond['settings']['totalReward'])
                     elif state_diamond['state'] in ['unavailable', 'failed', 'completed']:
                         next_at = datetime.fromtimestamp(state_diamond['timings']['nextAt'] / 1000).astimezone()
-                        all_next_at_times.append(next_at)
+                        farming_times.append(next_at.timestamp())
                         formatted_next_at = next_at.strftime('%x %X %Z')
                         self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Diamond Can Be Complete At {formatted_next_at} ]{Style.RESET_ALL}")
                     else:
                         self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ I Can Not Do Anything When 'state' In State Diamond Is {state_diamond['state']} ]{Style.RESET_ALL}")
 
-                now = datetime.now().astimezone()
-                next_sleep_time = None
+                if farming_times:
+                    now = datetime.now().astimezone().timestamp()
+                    wait_times = [farm_end_time - now for farm_end_time in farming_times if farm_end_time > now]
+                    if wait_times:
+                        sleep_time = min(wait_times) + 30
+                    else:
+                        sleep_time = 15 * 60
+                else:
+                    sleep_time = 15 * 60
 
-                if all_finish_times:
-                    next_sleep_time = min(all_finish_times)
-                if all_next_at_times:
-                    next_next_at_time = min(all_next_at_times)
-                    if next_sleep_time is None or next_next_at_time < next_sleep_time:
-                        next_sleep_time = next_next_at_time
-
-                if next_sleep_time:
-                    sleep_time = (next_sleep_time - now).total_seconds()
-                    if sleep_time > 0:
-                        sleep_timestamp = now + timedelta(seconds=sleep_time)
-                        timestamp_sleep_time = sleep_timestamp.strftime('%X %Z')
-                        self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ Restarting At {timestamp_sleep_time} ]{Style.RESET_ALL}")
-                        sleep(sleep_time)
+                sleep_timestamp = datetime.now().astimezone() + timedelta(seconds=sleep_time)
+                timestamp_sleep_time = sleep_timestamp.strftime('%X %Z')
+                self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ Restarting At {timestamp_sleep_time} ]{Style.RESET_ALL}")
+                sleep(sleep_time)
                 self.clear_terminal()
             except Exception as e:
                 self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
