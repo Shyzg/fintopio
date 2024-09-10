@@ -573,5 +573,7 @@ if __name__ == '__main__':
             queries = fintopio.load_queries(selected_file)
 
         fintopio.main()
+    except (ValueError, IndexError, FileNotFoundError) as e:
+        fintopio.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
     except KeyboardInterrupt:
         sys.exit(0)
