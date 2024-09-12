@@ -1,17 +1,21 @@
-import re
 from colorama import *
 from datetime import datetime, timedelta
 from fake_useragent import FakeUserAgent
 from faker import Faker
+from requests import (
+    JSONDecodeError,
+    RequestException,
+    Session
+)
 from time import sleep
 import json
 import os
-import requests
+import re
 import sys
 
 class Fintopio:
     def __init__(self) -> None:
-        self.session = requests.Session()
+        self.session = Session()
         self.headers = {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
@@ -88,7 +92,7 @@ class Fintopio:
                 response.raise_for_status()
                 token = response.json()['token']
                 tokens.append(token)
-            except (Exception, requests.RequestException, requests.JSONDecodeError) as e:
+            except (Exception, JSONDecodeError, RequestException) as e:
                 self.print_timestamp(
                     f"{Fore.YELLOW + Style.BRIGHT}[ Failed To Process {query} ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
@@ -107,10 +111,12 @@ class Fintopio:
             response = self.session.get(url=url, headers=headers)
             response.raise_for_status()
             return response.json()
-        except requests.RequestException as e:
+        except RequestException as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Init Fast: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+            return None
+        except (Exception, JSONDecodeError) as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Init Fast: {str(e)} ]{Style.RESET_ALL}")
+            return None
 
     def activate_referrals(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/referrals/activate'
@@ -126,7 +132,7 @@ class Fintopio:
             response = self.session.post(url=url, headers=headers, data=data)
             response.raise_for_status()
             return True
-        except (Exception, requests.RequestException, requests.JSONDecodeError):
+        except (Exception, RequestException, JSONDecodeError):
             return False
 
     def init_fast_hold(self, token: str):
@@ -139,10 +145,12 @@ class Fintopio:
             response = self.session.get(url=url, headers=headers)
             response.raise_for_status()
             return response.json()
-        except requests.RequestException as e:
+        except RequestException as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Init Fast Hold: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+            return None
+        except (Exception, JSONDecodeError) as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Init Fast Hold: {str(e)} ]{Style.RESET_ALL}")
+            return None
 
     def daily_checkins(self, token: str, first_name: str):
         url = 'https://fintopio-tg.fintopio.com/api/daily-checkins'
@@ -172,9 +180,9 @@ class Fintopio:
                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                 f"{Fore.YELLOW + Style.BRIGHT}[ Day {daily_checkins['totalDays']} ]{Style.RESET_ALL}"
             )
-        except requests.RequestException as e:
+        except RequestException as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Daily Checkins: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Daily Checkins: {str(e)} ]{Style.RESET_ALL}")
 
     def complete_diamond(self, token: str, first_name: str, diamond_number: str, total_reward: str):
@@ -195,7 +203,7 @@ class Fintopio:
                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                 f"{Fore.GREEN + Style.BRIGHT}[ Claimed {total_reward} From State Diamond ]{Style.RESET_ALL}"
             )
-        except requests.RequestException as e:
+        except RequestException as e:
             if e.response.status_code == 400:
                 error_complete_diamond = e.response.json()
                 if error_complete_diamond['message'] == 'Game is not available at the moment':
@@ -209,8 +217,8 @@ class Fintopio:
                 else:
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {error_complete_diamond['message']} ]{Style.RESET_ALL}")
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Complete Diamond: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
-            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Complete Diamond: {str(e)} ]{Style.RESET_ALL}")
+        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Complete Diamond: {str(e)} ]{Style.RESET_ALL}")
 
     def state_farming(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/farming/state'
@@ -222,10 +230,12 @@ class Fintopio:
             response = self.session.get(url=url, headers=headers)
             response.raise_for_status()
             return response.json()
-        except requests.RequestException as e:
+        except RequestException as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching State Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+            return None
+        except (Exception, JSONDecodeError) as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching State Farming: {str(e)} ]{Style.RESET_ALL}")
+            return None
 
     def farm_farming(self, token: str, farmed: int, first_name: str):
         url = 'https://fintopio-tg.fintopio.com/api/farming/farm'
@@ -258,13 +268,13 @@ class Fintopio:
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                     f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {formatted_finish} ]{Style.RESET_ALL}"
                 )
-        except requests.RequestException as e:
+        except RequestException as e:
             if e.response.status_code == 400:
                 error_farm_farming = e.response.json()
                 if error_farm_farming['message'] == 'Farming has been already started':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Farming Has Been Already Started ]{Style.RESET_ALL}")
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Farm Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Farm Farming: {str(e)} ]{Style.RESET_ALL}")
 
     def claim_farming(self, token: str, farmed: int, first_name: str):
@@ -296,13 +306,13 @@ class Fintopio:
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                     f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {formatted_finish} ]{Style.RESET_ALL}"
                 )
-        except requests.RequestException as e:
+        except RequestException as e:
             if e.response.status_code == 400:
                 error_claim_farming = e.response.json()
                 if error_claim_farming['message'] == 'Farming is not finished yet':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Farming Is Not Finished Yet ]{Style.RESET_ALL}")
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Claim Farming: {str(e)} ]{Style.RESET_ALL}")
 
     def tasks(self, token: str, first_name: str):
@@ -330,9 +340,9 @@ class Fintopio:
                         f"{Fore.YELLOW + Style.BRIGHT}[ Claiming {task['slug']} ]{Style.RESET_ALL}"
                     )
                     self.claim_tasks(token=token, first_name=first_name, task_id=task['id'], task_slug=task['slug'], task_reward_amount=task['rewardAmount'])
-        except requests.RequestException as e:
+        except RequestException as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Tasks: {str(e)} ]{Style.RESET_ALL}")
 
     def start_tasks(self, token: str, first_name: str, task_id: int, task_slug: str, task_reward_amount: int):
@@ -356,13 +366,13 @@ class Fintopio:
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                     f"{Fore.RED + Style.BRIGHT}[ Finish This {task_slug} By Itself ]{Style.RESET_ALL}"
                 )
-        except requests.RequestException as e:
+        except RequestException as e:
             if e.response.status_code == 400:
                 error_start_tasks = response.json()
                 if error_start_tasks['message'] == 'Unable to update task status':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Unable To Update Task Status. Please Try This Task By Itself ]{Style.RESET_ALL}")
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Start Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Start Tasks: {str(e)} ]{Style.RESET_ALL}")
 
     def claim_tasks(self, token: str, first_name: str, task_id: int, task_slug: str, task_reward_amount: int):
@@ -386,7 +396,7 @@ class Fintopio:
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                     f"{Fore.BLUE + Style.BRIGHT}[ Reward {task_reward_amount} ]{Style.RESET_ALL}"
                 )
-        except requests.RequestException as e:
+        except RequestException as e:
             if e.response.status_code == 400:
                 error_claim_tasks = response.json()
                 if error_claim_tasks['message'] == 'Entity not found':
@@ -394,13 +404,12 @@ class Fintopio:
                 elif error_claim_tasks['message'] == 'Unable to update task status':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Please Wait Until {task_slug} Is Claimed ]{Style.RESET_ALL}")
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, requests.JSONDecodeError) as e:
+        except (Exception, JSONDecodeError) as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Claim Tasks: {str(e)} ]{Style.RESET_ALL}")
 
-    def main(self):
+    def main(self, queries: str):
         while True:
             try:
-                queries = [line.strip() for line in open('queries.txt') if line.strip()]
                 tokens = self.telegram_auth(queries=queries)
                 restart_times = []
                 total_balance = 0
@@ -414,11 +423,7 @@ class Fintopio:
                     self.activate_referrals(token=token)
 
                     init_fast_hold = self.init_fast_hold(token=token)
-                    if init_fast_hold is None:
-                        self.print_timestamp(
-                            f"{Fore.RED + Style.BRIGHT}[ Failed To Retrieve User Information For {first_name} ]{Style.RESET_ALL}"
-                        )
-                        continue
+                    if init_fast_hold is None: continue
 
                     self.print_timestamp(
                         f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
@@ -446,11 +451,7 @@ class Fintopio:
                     first_name = init_fast['profile']['firstName'] if init_fast else Faker().first_name()
 
                     state_farming = self.state_farming(token=token)
-                    if state_farming is None:
-                        self.print_timestamp(
-                            f"{Fore.RED + Style.BRIGHT}[ Failed To Retrieve State Farming For {first_name} ]{Style.RESET_ALL}"
-                        )
-                        continue
+                    if state_farming is None: continue
 
                     if state_farming['state'] == 'farmed':
                         self.claim_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
@@ -471,10 +472,10 @@ class Fintopio:
                 self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Tasks ]{Style.RESET_ALL}")
                 for token in tokens:
                     init_fast = self.init_fast(token=token)
+                    total_balance += int(float(init_fast['balance']['balance'])) if init_fast else 0
                     first_name = init_fast['profile']['firstName'] if init_fast else Faker().first_name()
 
                     self.tasks(token=token, first_name=first_name)
-                    total_balance += int(float(init_fast['balance']['balance'])) if init_fast else 0
 
                 self.print_timestamp(
                     f"{Fore.CYAN + Style.BRIGHT}[ Total Account {len(tokens)} ]{Style.RESET_ALL}"
@@ -504,7 +505,7 @@ if __name__ == '__main__':
     try:
         init(autoreset=True)
         fintopio = Fintopio()
-
+        
         queries_files = [f for f in os.listdir() if f.startswith('queries-') and f.endswith('.txt')]
         queries_files.sort(key=lambda x: int(re.findall(r'\d+', x)[0]) if re.findall(r'\d+', x) else 0)
 
@@ -572,8 +573,6 @@ if __name__ == '__main__':
             selected_file = queries_files[choice]
             queries = fintopio.load_queries(selected_file)
 
-        fintopio.main()
-    except (ValueError, IndexError, FileNotFoundError) as e:
-        fintopio.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
+        fintopio.main(queries=queries)
     except KeyboardInterrupt:
         sys.exit(0)
