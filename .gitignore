@@ -1,4 +1,8 @@
 __pycache__
 .vscode
+development
 venv
 .DS_Store
+*.txt
+!tokens.txt
+!queries.txt
