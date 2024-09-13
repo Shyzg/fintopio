@@ -262,11 +262,10 @@ class Fintopio:
                 if datetime.now().astimezone() >= datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone():
                     return self.claim_farming(token=token, farmed=farmed, first_name=first_name)
 
-                formatted_finish = datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')
                 return self.print_timestamp(
                     f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {formatted_finish} ]{Style.RESET_ALL}"
+                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                 )
         except RequestException as e:
             if e.response.status_code == 400:
@@ -300,11 +299,10 @@ class Fintopio:
             elif claim_farming['state'] == 'farming':
                 if datetime.now().astimezone() >= datetime.fromtimestamp(claim_farming['timings']['finish'] / 1000).astimezone():
                     return self.claim_farming(token=token, farmed=farmed, first_name=first_name)
-                formatted_finish = datetime.fromtimestamp(claim_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')
                 return self.print_timestamp(
                     f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {formatted_finish} ]{Style.RESET_ALL}"
+                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(claim_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                 )
         except RequestException as e:
             if e.response.status_code == 400:
@@ -436,14 +434,12 @@ class Fintopio:
                     if init_fast_hold['clickerDiamondState']['state'] == 'available':
                         self.complete_diamond(token=token, first_name=first_name, diamond_number=init_fast_hold['clickerDiamondState']['diamondNumber'], total_reward=init_fast_hold['clickerDiamondState']['settings']['totalReward'])
                     else:
-                        formatted_next_at = datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().strftime('%x %X %Z')
+                        restart_times.append(datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().timestamp())
                         self.print_timestamp(
                             f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                            f"{Fore.YELLOW + Style.BRIGHT}[ Diamond Can Be Complete At {formatted_next_at} ]{Style.RESET_ALL}"
+                            f"{Fore.YELLOW + Style.BRIGHT}[ Diamond Can Be Complete At {datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                         )
-
-                    restart_times.append(datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().timestamp())
 
                 self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Tasks/Farming ]{Style.RESET_ALL}")
                 for token in tokens:
@@ -458,15 +454,14 @@ class Fintopio:
                     elif state_farming['state'] == 'idling':
                         self.farm_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
                     elif state_farming['state'] == 'farming':
-                        restart_times.append(datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().timestamp())
                         if datetime.now().astimezone() >= datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone():
                             self.claim_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
                         else:
-                            formatted_finish = datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')
+                            restart_times.append(datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().timestamp())
                             self.print_timestamp(
                                 f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {formatted_finish} ]{Style.RESET_ALL}"
+                                f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                             )
 
                 self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Tasks ]{Style.RESET_ALL}")
@@ -493,8 +488,7 @@ class Fintopio:
                 else:
                     sleep_time = 15 * 60
 
-                sleep_timestamp = datetime.now().astimezone() + timedelta(seconds=sleep_time)
-                self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ Restarting At {sleep_timestamp.strftime('%X %Z')} ]{Style.RESET_ALL}")
+                self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ Restarting At {(datetime.now().astimezone() + timedelta(seconds=sleep_time)).strftime('%X %Z')} ]{Style.RESET_ALL}")
                 sleep(sleep_time)
                 self.clear_terminal()
             except Exception as e:
@@ -574,5 +568,7 @@ if __name__ == '__main__':
             queries = fintopio.load_queries(selected_file)
 
         fintopio.main(queries=queries)
+    except (ValueError, IndexError, FileNotFoundError) as e:
+        fintopio.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
     except KeyboardInterrupt:
         sys.exit(0)
