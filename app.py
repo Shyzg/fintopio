@@ -7,7 +7,8 @@ from requests import (
     RequestException,
     Session
 )
-from time import sleep
+from urllib.parse import parse_qs
+import asyncio
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import sys
 class Fintopio:
     def __init__(self) -> None:
         self.session = Session()
+        self.faker = Faker()
         self.headers = {
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
@@ -83,42 +85,44 @@ class Fintopio:
                     outfile.write('\n'.join(chunk) + '\n')
                 self.print_timestamp(f"{Fore.GREEN + Style.BRIGHT}[ Generated '{queries_file}' ]{Style.RESET_ALL}")
 
-    def telegram_auth(self, queries: str):
-        tokens = []
-        for query in queries:
-            url = f'https://fintopio-tg.fintopio.com/api/auth/telegram?{query}'
-            try:
-                response = self.session.get(url=url, headers=self.headers)
+    async def generate_token(self, query: str):
+        url = f'https://fintopio-tg.fintopio.com/api/auth/telegram?{query}'
+        try:
+            with Session().get(url=url, headers=self.headers) as response:
                 response.raise_for_status()
                 token = response.json()['token']
-                tokens.append(token)
-            except (Exception, JSONDecodeError, RequestException) as e:
-                self.print_timestamp(
-                    f"{Fore.YELLOW + Style.BRIGHT}[ Failed To Process {query} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}"
-                )
-                continue
-        return tokens
+                parsed_query = parse_qs(query)
+                user_data_json = parsed_query['user'][0]
+                user_data = json.loads(user_data_json)
+                username = user_data['username'] if user_data else self.faker.user_name()
+                return (token, username)
+        except (Exception, JSONDecodeError, RequestException) as e:
+            self.print_timestamp(
+                f"{Fore.YELLOW + Style.BRIGHT}[ Failed To Process {query} ]{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}"
+            )
+            return None
 
-    def init_fast(self, token: str):
+    async def generate_tokens(self, queries):
+        tasks = [self.generate_token(query) for query in queries]
+        results = await asyncio.gather(*tasks)
+        return [result for result in results if result is not None]
+
+    async def init_fast(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/fast/init'
         headers = {
             **self.headers,
             'Authorization': f'Bearer {token}'
         }
         try:
-            response = self.session.get(url=url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except RequestException as e:
-            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Init Fast: {str(e.response.reason)} ]{Style.RESET_ALL}")
-            return None
-        except (Exception, JSONDecodeError) as e:
-            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Init Fast: {str(e)} ]{Style.RESET_ALL}")
-            return None
+            with Session().get(url=url, headers=headers) as response:
+                response.raise_for_status()
+                return True
+        except (Exception, RequestException, JSONDecodeError):
+            return False
 
-    def activate_referrals(self, token: str):
+    async def activate_referrals(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/referrals/activate'
         data = json.dumps({'code':'l5bYPIC8FtjMColV'})
         headers = {
@@ -129,30 +133,30 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers, data=data)
-            response.raise_for_status()
-            return True
+            with Session().post(url=url, headers=headers, data=data) as response:
+                response.raise_for_status()
+                return True
         except (Exception, RequestException, JSONDecodeError):
             return False
 
-    def init_fast_hold(self, token: str):
+    async def init_fast_hold(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/hold/fast/init'
         headers = {
             **self.headers,
             'Authorization': f'Bearer {token}'
         }
         try:
-            response = self.session.get(url=url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except RequestException as e:
-            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Init Fast Hold: {str(e.response.reason)} ]{Style.RESET_ALL}")
+            with Session().get(url=url, headers=headers) as response:
+                response.raise_for_status()
+                return response.json()
+        except (Exception, RequestException) as e:
+            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Init Fast Hold: {str(e)} ]{Style.RESET_ALL}")
             return None
-        except (Exception, JSONDecodeError) as e:
+        except Exception as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Init Fast Hold: {str(e)} ]{Style.RESET_ALL}")
             return None
 
-    def daily_checkins(self, token: str, first_name: str):
+    async def daily_checkins(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/daily-checkins'
         headers = {
             **self.headers,
@@ -162,30 +166,23 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers)
-            response.raise_for_status()
-            daily_checkins = response.json()
-            if daily_checkins['claimed']:
+            with Session().post(url=url, headers=headers) as response:
+                response.raise_for_status()
+                daily_checkins = response.json()
+                if daily_checkins['claimed']:
+                    return self.print_timestamp(f"{Fore.MAGENTA + Style.BRIGHT}[ You\'ve Already Claim Daily Checkins ]{Style.RESET_ALL}")
+
                 return self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
+                    f"{Fore.GREEN + Style.BRIGHT}[ You\'ve Got {daily_checkins['dailyReward']} From Daily Checkins ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Daily Checkins Already Claimed ]{Style.RESET_ALL}"
+                    f"{Fore.YELLOW + Style.BRIGHT}[ Day {daily_checkins['totalDays']} ]{Style.RESET_ALL}"
                 )
-            return self.print_timestamp(
-                f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.GREEN + Style.BRIGHT}[ Daily Checkins Claimed ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}[ Reward {daily_checkins['dailyReward']} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.YELLOW + Style.BRIGHT}[ Day {daily_checkins['totalDays']} ]{Style.RESET_ALL}"
-            )
-        except RequestException as e:
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Daily Checkins: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+        except (Exception, RequestException) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Daily Checkins: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Daily Checkins: {str(e)} ]{Style.RESET_ALL}")
 
-    def complete_diamond(self, token: str, first_name: str, diamond_number: str, total_reward: str):
+    async def complete_diamond(self, token: str, diamond_number: str, total_reward: str):
         url = 'https://fintopio-tg.fintopio.com/api/clicker/diamond/complete'
         data = json.dumps({'diamondNumber':diamond_number})
         headers = {
@@ -196,14 +193,10 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers, data=data)
-            response.raise_for_status()
-            return self.print_timestamp(
-                f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.GREEN + Style.BRIGHT}[ Claimed {total_reward} From State Diamond ]{Style.RESET_ALL}"
-            )
-        except RequestException as e:
+            with Session().post(url=url, headers=headers, data=data) as response:
+                response.raise_for_status()
+                return self.print_timestamp(f"{Fore.GREEN + Style.BRIGHT}[ You\'ve Got {total_reward} From State Diamond ]{Style.RESET_ALL}")
+        except (Exception, RequestException) as e:
             if e.response.status_code == 400:
                 error_complete_diamond = e.response.json()
                 if error_complete_diamond['message'] == 'Game is not available at the moment':
@@ -214,30 +207,28 @@ class Fintopio:
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ The Diamond Is Outdated, Reload The Page And Try Again ]{Style.RESET_ALL}")
                 elif error_complete_diamond['message']['diamondNumber']['isNumberString'] == 'diamondNumber must be a number string':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Diamond Number Must Be A Number String ]{Style.RESET_ALL}")
-                else:
-                    return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {error_complete_diamond['message']} ]{Style.RESET_ALL}")
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Complete Diamond: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Complete Diamond: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Complete Diamond: {str(e)} ]{Style.RESET_ALL}")
 
-    def state_farming(self, token: str):
+    async def state_farming(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/farming/state'
         headers = {
             **self.headers,
             'Authorization': f'Bearer {token}'
         }
         try:
-            response = self.session.get(url=url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except RequestException as e:
-            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching State Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
+            with Session().get(url=url, headers=headers) as response:
+                response.raise_for_status()
+                return response.json()
+        except (Exception, RequestException) as e:
+            self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching State Farming: {str(e)} ]{Style.RESET_ALL}")
             return None
-        except (Exception, JSONDecodeError) as e:
+        except Exception as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching State Farming: {str(e)} ]{Style.RESET_ALL}")
             return None
 
-    def farm_farming(self, token: str, farmed: int, first_name: str):
+    async def farm_farming(self, token: str, farmed: int):
         url = 'https://fintopio-tg.fintopio.com/api/farming/farm'
         headers = {
             **self.headers,
@@ -247,36 +238,28 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers)
-            response.raise_for_status()
-            farm_farming = response.json()
-            if farm_farming['state'] == 'farmed':
-                return self.claim_farming(token=token, farmed=farmed, first_name=first_name)
-            elif farm_farming['state'] == 'farming':
-                self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT}[ Farming Started ]{Style.RESET_ALL}"
-                )
+            with Session().post(url=url, headers=headers) as response:
+                response.raise_for_status()
+                farm_farming = response.json()
+                if farm_farming['state'] == 'farmed':
+                    return await self.claim_farming(token=token, farmed=farmed)
+                elif farm_farming['state'] == 'farming':
+                    self.print_timestamp(f"{Fore.GREEN + Style.BRIGHT}[ Farming Started ]{Style.RESET_ALL}")
 
-                if datetime.now().astimezone() >= datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone():
-                    return self.claim_farming(token=token, farmed=farmed, first_name=first_name)
+                    if datetime.now().astimezone() >= datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone():
+                        return await self.claim_farming(token=token, farmed=farmed)
 
-                return self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                )
-        except RequestException as e:
+                    return self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(farm_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}")
+        except (Exception, RequestException) as e:
             if e.response.status_code == 400:
                 error_farm_farming = e.response.json()
                 if error_farm_farming['message'] == 'Farming has been already started':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Farming Has Been Already Started ]{Style.RESET_ALL}")
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Farm Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Farm Farming: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Farm Farming: {str(e)} ]{Style.RESET_ALL}")
 
-    def claim_farming(self, token: str, farmed: int, first_name: str):
+    async def claim_farming(self, token: str, farmed: int):
         url = 'https://fintopio-tg.fintopio.com/api/farming/claim'
         headers = {
             **self.headers,
@@ -286,64 +269,44 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers)
-            response.raise_for_status()
-            claim_farming = response.json()
-            if claim_farming['state'] == 'idling':
-                self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT}[ Farming Claimed {farmed} ]{Style.RESET_ALL}"
-                )
-                return self.farm_farming(token=token, farmed=farmed, first_name=first_name)
-            elif claim_farming['state'] == 'farming':
-                if datetime.now().astimezone() >= datetime.fromtimestamp(claim_farming['timings']['finish'] / 1000).astimezone():
-                    return self.claim_farming(token=token, farmed=farmed, first_name=first_name)
-                return self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(claim_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                )
-        except RequestException as e:
+            with Session().post(url=url, headers=headers) as response:
+                response.raise_for_status()
+                claim_farming = response.json()
+                if claim_farming['state'] == 'idling':
+                    self.print_timestamp(f"{Fore.GREEN + Style.BRIGHT}[ You\'ve Got {farmed} From Farming ]{Style.RESET_ALL}")
+                    return await self.farm_farming(token=token, farmed=farmed)
+        except (Exception, RequestException) as e:
             if e.response.status_code == 400:
                 error_claim_farming = e.response.json()
                 if error_claim_farming['message'] == 'Farming is not finished yet':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Farming Is Not Finished Yet ]{Style.RESET_ALL}")
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Farming: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Farming: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Claim Farming: {str(e)} ]{Style.RESET_ALL}")
 
-    def tasks(self, token: str, first_name: str):
+    async def tasks(self, token: str):
         url = 'https://fintopio-tg.fintopio.com/api/hold/tasks'
         headers = {
             **self.headers,
             'Authorization': f'Bearer {token}'
         }
         try:
-            response = self.session.get(url=url, headers=headers)
-            response.raise_for_status()
-            tasks = response.json()
-            for task in tasks['tasks']:
-                if task['status'] == 'available':
-                    self.print_timestamp(
-                        f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                        f"{Fore.YELLOW + Style.BRIGHT}[ Starting {task['slug']} ]{Style.RESET_ALL}"
-                    )
-                    self.start_tasks(token=token, first_name=first_name, task_id=task['id'], task_slug=task['slug'], task_reward_amount=task['rewardAmount'])
-                elif task['status'] == 'verified':
-                    self.print_timestamp(
-                        f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                        f"{Fore.YELLOW + Style.BRIGHT}[ Claiming {task['slug']} ]{Style.RESET_ALL}"
-                    )
-                    self.claim_tasks(token=token, first_name=first_name, task_id=task['id'], task_slug=task['slug'], task_reward_amount=task['rewardAmount'])
-        except RequestException as e:
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            with Session().get(url=url, headers=headers) as response:
+                response.raise_for_status()
+                tasks = response.json()
+                for task in tasks['tasks']:
+                    if task['status'] == 'available':
+                        self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Starting {task['slug']} ]{Style.RESET_ALL}")
+                        await self.start_tasks(token=token, task_id=task['id'], task_slug=task['slug'], task_reward_amount=task['rewardAmount'])
+                    elif task['status'] == 'verified':
+                        self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Claiming {task['slug']} ]{Style.RESET_ALL}")
+                        await self.claim_tasks(token=token, task_id=task['id'], task_slug=task['slug'], task_reward_amount=task['rewardAmount'])
+        except (Exception, RequestException) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Fetching Tasks: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Fetching Tasks: {str(e)} ]{Style.RESET_ALL}")
 
-    def start_tasks(self, token: str, first_name: str, task_id: int, task_slug: str, task_reward_amount: int):
+    async def start_tasks(self, token: str, task_id: int, task_slug: str, task_reward_amount: int):
         url = f'https://fintopio-tg.fintopio.com/api/hold/tasks/{task_id}/start'
         headers = {
             **self.headers,
@@ -353,27 +316,21 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers)
-            response.raise_for_status()
-            start_tasks = response.json()
-            if start_tasks['status'] == 'verifying':
-                return self.claim_tasks(token=token, first_name=first_name, task_id=task_id, task_slug=task_slug, task_reward_amount=task_reward_amount)
-            elif start_tasks['status'] == 'in-progress':
-                return self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT}[ Finish This {task_slug} By Itself ]{Style.RESET_ALL}"
-                )
-        except RequestException as e:
+            with Session().post(url=url, headers=headers) as response:
+                response.raise_for_status()
+                start_tasks = response.json()
+                if start_tasks['status'] == 'verifying':
+                    return await self.claim_tasks(token=token, task_id=task_id, task_slug=task_slug, task_reward_amount=task_reward_amount)
+        except (Exception, RequestException) as e:
             if e.response.status_code == 400:
                 error_start_tasks = response.json()
                 if error_start_tasks['message'] == 'Unable to update task status':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Unable To Update Task Status. Please Try This Task By Itself ]{Style.RESET_ALL}")
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Start Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Start Tasks: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Start Tasks: {str(e)} ]{Style.RESET_ALL}")
 
-    def claim_tasks(self, token: str, first_name: str, task_id: int, task_slug: str, task_reward_amount: int):
+    async def claim_tasks(self, token: str, task_id: int, task_slug: str, task_reward_amount: int):
         url = f'https://fintopio-tg.fintopio.com/api/hold/tasks/{task_id}/claim'
         headers = {
             **self.headers,
@@ -383,104 +340,84 @@ class Fintopio:
             'Origin': 'https://fintopio-tg.fintopio.com'
         }
         try:
-            response = self.session.post(url=url, headers=headers)
-            response.raise_for_status()
-            claim_tasks = response.json()
-            if claim_tasks['status'] == 'completed':
-                return self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.GREEN + Style.BRIGHT}[ Claimed {task_slug} ]{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                    f"{Fore.BLUE + Style.BRIGHT}[ Reward {task_reward_amount} ]{Style.RESET_ALL}"
-                )
-        except RequestException as e:
+            with Session().post(url=url, headers=headers) as response:
+                response.raise_for_status()
+                claim_tasks = response.json()
+                if claim_tasks['status'] == 'completed':
+                    return self.print_timestamp(f"{Fore.GREEN + Style.BRIGHT}[ You\'ve Got {task_reward_amount} From {task_slug} ]{Style.RESET_ALL}")
+        except (JSONDecodeError, RequestException) as e:
             if e.response.status_code == 400:
                 error_claim_tasks = response.json()
                 if error_claim_tasks['message'] == 'Entity not found':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {task_slug} Not Found ]{Style.RESET_ALL}")
                 elif error_claim_tasks['message'] == 'Unable to update task status':
                     return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ Please Wait Until {task_slug} Is Claimed ]{Style.RESET_ALL}")
-            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Tasks: {str(e.response.reason)} ]{Style.RESET_ALL}")
-        except (Exception, JSONDecodeError) as e:
+            return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An HTTP Error Occurred While Claim Tasks: {str(e)} ]{Style.RESET_ALL}")
+        except Exception as e:
             return self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ An Unexpected Error Occurred While Claim Tasks: {str(e)} ]{Style.RESET_ALL}")
 
-    def main(self, queries: str):
+    async def main(self, queries: str):
         while True:
             try:
-                tokens = self.telegram_auth(queries=queries)
+                accounts = await self.generate_tokens(queries=queries)
                 restart_times = []
                 total_balance = 0
 
-                self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Home/Gem ]{Style.RESET_ALL}")
-                for token in tokens:
-                    init_fast = self.init_fast(token=token)
-                    if init_fast is None: continue
-                    first_name = init_fast['profile']['firstName'] if init_fast else Faker().first_name()
-
-                    self.activate_referrals(token=token)
-
-                    init_fast_hold = self.init_fast_hold(token=token)
-                    if init_fast_hold is None: continue
-
+                for (token, username) in accounts:
                     self.print_timestamp(
-                        f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}[ Home/Gem ]{Style.RESET_ALL}"
                         f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                        f"{Fore.BLUE + Style.BRIGHT}[ Balance {int(float(init_fast_hold['referralData']['balance']))} ]{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ {username} ]{Style.RESET_ALL}"
                     )
+                    await self.init_fast(token=token)
+                    await self.activate_referrals(token=token)
 
-                    self.daily_checkins(token=token, first_name=first_name)
+                    init_fast_hold = await self.init_fast_hold(token=token)
+                    if init_fast_hold is None: continue
+                    total_balance += int(float(init_fast_hold['referralData']['balance']))
+                    await self.daily_checkins(token=token)
 
                     if init_fast_hold['clickerDiamondState']['state'] == 'available':
-                        self.complete_diamond(token=token, first_name=first_name, diamond_number=init_fast_hold['clickerDiamondState']['diamondNumber'], total_reward=init_fast_hold['clickerDiamondState']['settings']['totalReward'])
+                        await self.complete_diamond(token=token, diamond_number=init_fast_hold['clickerDiamondState']['diamondNumber'], total_reward=init_fast_hold['clickerDiamondState']['settings']['totalReward'])
                     else:
                         restart_times.append(datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().timestamp())
-                        self.print_timestamp(
-                            f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                            f"{Fore.YELLOW + Style.BRIGHT}[ Diamond Can Be Complete At {datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                        )
+                        self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Diamond Can Be Complete At {datetime.fromtimestamp(init_fast_hold['clickerDiamondState']['timings']['nextAt'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}")
 
-                self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Tasks/Farming ]{Style.RESET_ALL}")
-                for token in tokens:
-                    init_fast = self.init_fast(token=token)
-                    first_name = init_fast['profile']['firstName'] if init_fast else Faker().first_name()
-
-                    state_farming = self.state_farming(token=token)
+                for (token, username) in accounts:
+                    self.print_timestamp(
+                        f"{Fore.WHITE + Style.BRIGHT}[ Tasks/Farming ]{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ {username} ]{Style.RESET_ALL}"
+                    )
+                    state_farming = await self.state_farming(token=token)
                     if state_farming is None: continue
-
                     if state_farming['state'] == 'farmed':
-                        self.claim_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
+                        await self.claim_farming(token=token, farmed=state_farming['farmed'])
                     elif state_farming['state'] == 'idling':
-                        self.farm_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
+                        await self.farm_farming(token=token, farmed=state_farming['farmed'])
                     elif state_farming['state'] == 'farming':
                         if datetime.now().astimezone() >= datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone():
-                            self.claim_farming(token=token, farmed=state_farming['farmed'], first_name=first_name)
+                            await self.claim_farming(token=token, farmed=state_farming['farmed'])
                         else:
                             restart_times.append(datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().timestamp())
-                            self.print_timestamp(
-                                f"{Fore.CYAN + Style.BRIGHT}[ {first_name} ]{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                            )
+                            self.print_timestamp(f"{Fore.YELLOW + Style.BRIGHT}[ Farming Can Be Claim At {datetime.fromtimestamp(state_farming['timings']['finish'] / 1000).astimezone().strftime('%x %X %Z')} ]{Style.RESET_ALL}")
 
-                self.print_timestamp(f"{Fore.WHITE + Style.BRIGHT}[ Tasks ]{Style.RESET_ALL}")
-                for token in tokens:
-                    init_fast = self.init_fast(token=token)
-                    total_balance += int(float(init_fast['balance']['balance'])) if init_fast else 0
-                    first_name = init_fast['profile']['firstName'] if init_fast else Faker().first_name()
-
-                    self.tasks(token=token, first_name=first_name)
+                for (token, username) in accounts:
+                    self.print_timestamp(
+                        f"{Fore.WHITE + Style.BRIGHT}[ Tasks ]{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}[ {username} ]{Style.RESET_ALL}"
+                    )
+                    await self.tasks(token=token)
 
                 self.print_timestamp(
-                    f"{Fore.CYAN + Style.BRIGHT}[ Total Account {len(tokens)} ]{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}[ Total Account {len(accounts)} ]{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
                     f"{Fore.GREEN + Style.BRIGHT}[ Total Balance {total_balance} ]{Style.RESET_ALL}"
                 )
 
                 if restart_times:
-                    now = datetime.now().astimezone().timestamp()
-                    wait_times = [restart_time_end - now for restart_time_end in restart_times if restart_time_end > now]
+                    wait_times = [restart_time_end - datetime.now().astimezone().timestamp() for restart_time_end in restart_times if restart_time_end > datetime.now().astimezone().timestamp()]
                     if wait_times:
                         sleep_time = min(wait_times) + 30
                     else:
@@ -489,7 +426,7 @@ class Fintopio:
                     sleep_time = 15 * 60
 
                 self.print_timestamp(f"{Fore.CYAN + Style.BRIGHT}[ Restarting At {(datetime.now().astimezone() + timedelta(seconds=sleep_time)).strftime('%X %Z')} ]{Style.RESET_ALL}")
-                sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 self.clear_terminal()
             except Exception as e:
                 self.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
@@ -566,8 +503,7 @@ if __name__ == '__main__':
 
             selected_file = queries_files[choice]
             queries = fintopio.load_queries(selected_file)
-
-        fintopio.main(queries=queries)
+        asyncio.run(fintopio.main(queries=queries))
     except (ValueError, IndexError, FileNotFoundError) as e:
         fintopio.print_timestamp(f"{Fore.RED + Style.BRIGHT}[ {str(e)} ]{Style.RESET_ALL}")
     except KeyboardInterrupt:
