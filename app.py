@@ -16,7 +16,6 @@ import sys
 
 class Fintopio:
     def __init__(self) -> None:
-        self.session = Session()
         self.faker = Faker()
         self.headers = {
             'Accept': 'application/json, text/plain, */*',
