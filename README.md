@@ -1,1 +1,1 @@
-[Fintopio Telegram](https://fintop.io/2uMXWXxiLB)
+[Fintopio Telegram](https://t.me/fintopio/wallet?startapp=reflink-reflink_l5bYPIC8FtjMColV-)
